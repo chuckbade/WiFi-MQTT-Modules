@@ -8,13 +8,19 @@
 #include <Servo.h>
 #include <EEPROM.h>
 
-// Update these with values suitable for your network.
-const char* Ssid = "yourSSID";
-const char* Pswd = "yourPSWD";
+// Update and uncomment these with values suitable for your network or use an include file.
+// Place the file in C:\Users\<name>\Documents\Arduino\libraries\Personal\
+//#define MYSSID "YourNetwork"
+//#define PASSWD "YourPassword"
+
+#ifndef MYSSID
+#include <SSIDPASSWD.h>
+#endif
+
 const char* MqttServer = "192.168.1.13";
 
 // change the following two lines for your sensor/output configuration
-const int JMRISensorNumber = 303;  // This is a JMRI number, i.e. DS400, must be unique
+const int JMRISensorNumber = 400;  // This is a JMRI number, i.e. DS400, must be unique
 const int JMRITurnoutNumber = 60;  // This is a JMRI number, i.e. DT55
 
 // Time between each degree of movement in milliseconds, 25 is nice and slow.
@@ -122,8 +128,8 @@ void setup_wifi() {
   Serial.println();
 
   // We start by connecting to a WiFi network
-  Serial.print("Connecting to " + String(Ssid));
-  WiFi.begin(Ssid, Pswd);
+  Serial.print("Connecting to " + String(MYSSID));
+  WiFi.begin(MYSSID, PASSWD);
   
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);

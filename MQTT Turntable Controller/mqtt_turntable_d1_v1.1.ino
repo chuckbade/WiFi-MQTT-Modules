@@ -11,10 +11,10 @@
 
 // Update and uncomment these with values suitable for your network or use an include file.
 // Place the file in C:\Users\<name>\Documents\Arduino\libraries\Personal\
-//#define SSID "YourNetwork"
+//#define MYSSID "YourNetwork"
 //#define PASSWD "YourPassword"
 
-#ifndef SSID
+#ifndef MYSSID
 #include <SSIDPASSWD.h>
 #endif
 
@@ -29,11 +29,11 @@ const int SensorAtHome = HIGH;
 const int MaximumSpeed = 4000;
 const int MaxHomingSpeed = 600;
 const int AccelerationFactor = 500;  // how quickly it accelerates to max speed
-const int ProgStepSize = 15;   // 1 determines how fast the stepper moves while programming
+const int ProgStepSize = 5;   // 1 determines how fast the stepper moves while programming
 const int Ray0Offset = 0;
 // Set the following to 9999999 if you want don't want the motor to take the shortest route, but 
 // to return the opposite direction from whence it came.  Set to 3200 for direct drive turntable.
-const int StepsPerRev = 9999999;  // 3200  
+const int StepsPerRev = 19200;  // 3200  
 
 /*
   Written for Wemos (or clone) D1 mini
@@ -110,8 +110,8 @@ void setupWifi() {
   Serial.println();
 
   // We start by connecting to a WiFi network
-  Serial.print("Connecting to " + String(SSID));
-  WiFi.begin(SSID, PASSWD);
+  Serial.print("Connecting to " + String(MYSSID));
+  WiFi.begin(MYSSID, PASSWD);
   
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -188,17 +188,25 @@ void moveToRay(int rayNum) {
 
 void moveHome() {
   int i;
-  Serial.print("Moving to home...");
+  Serial.print("moveHome() Start...");
   Stpr.setMaxSpeed(MaxHomingSpeed);    // maximum speed after full acceleration
 
   if (digitalRead(HOME) == SensorAtHome) {  // if the home flag is already set
-    Stpr.move(100 * Away);  // a sufficiently large number to make sure the flag is cleared
+    Serial.print("Sensor blocked...");
+    //Stpr.move(100 * Away);  // a sufficiently large number to make sure the flag is cleared
+    Stpr.move(StepsPerRev * Away);  // a sufficiently large number to make sure the flag is cleared
 
     // move away from the home flag until cleared
-    while(Stpr.run())
-      ESP.wdtFeed();  // retrigger the watchdog timer, just in case  
+    while (digitalRead(HOME) == SensorAtHome) {
+      Stpr.run();
+      ESP.wdtFeed();  // retrigger the watchdog timer, just in case
+    }
+
+    Serial.print("Sensor cleared...");
+    Stpr.stop();
   }
 
+  Serial.print("Moving to home...");
   Stpr.move(StepsPerRev * ToHome);  // move up to one full revolution
 
   while (digitalRead(HOME) != SensorAtHome) {
@@ -206,19 +214,21 @@ void moveHome() {
     ESP.wdtFeed();  // retrigger the watchdog timer, just in case
   }
 
+  Serial.print("Saving home pos...");
   int homeLoc = Stpr.currentPosition();   // get position where home sensor triggered
   Stpr.stop();  // stop after deceleration 
   
   while(Stpr.run())
     ESP.wdtFeed();  // retrigger the watchdog timer, just in case  
 
+  Serial.print("Moving to saved pos...");
   Stpr.moveTo(homeLoc);  // go back to position saved as home
   
   while(Stpr.run())
     ESP.wdtFeed();  // retrigger the watchdog timer, just in case  
 
   Stpr.setCurrentPosition(0);
-  Serial.println("Reached home.");
+  Serial.println("Done.");
 }
 
 
@@ -396,14 +406,17 @@ void getRayPositions() {
     eeAddress = LastRay * sizeof(long);
     EEPROM.get(eeAddress, position);
 
-    if (position < 1)
+    if (position < 1) {
+      LastRay--;
       break;
+    }
 
     RayPosition[LastRay] = position;
     
     Serial.println("eeAddress=" + String(eeAddress) + " LastRay=" + String(LastRay) 
       + " value=" + String(RayPosition[LastRay]));
   }
+  Serial.println("LastRay=" + String(LastRay));
 }
 
 

@@ -3,17 +3,23 @@
   Chuck Bade 8/23/20
 */
 
-// Update these with values suitable for your network.
-const char* Ssid = "yourSSID";
-const char* Pswd = "yourPSWD";
+// Update and uncomment these with values suitable for your network or use an include file.
+// Place the file in C:\Users\<name>\Documents\Arduino\libraries\Personal\
+//#define MYSSID "YourNetwork"
+//#define PASSWD "YourPassword"
+
+#ifndef MYSSID
+#include <SSIDPASSWD.h>
+#endif
+
 const char* MqttServer = "192.168.1.13";
 
 // change the following three lines for your sensor/output configuration
-const int JMRISensorNumber = 530;  // This is a JMRI number, i.e. MS400, must be unique
-const int JMRIGreenNumber = 890;    // These are JMRI numbers, i.e. MT55
-const int JMRIYellowNumber = 891;
-const int JMRIRedNumber = 892;
-const int JMRIAuxNumber = 893;
+const int JMRISensorNumber = 508;  // This is a JMRI number, i.e. MS400, must be unique
+const int JMRIGreenNumber  = 824;    // These are JMRI numbers, i.e. MT55
+const int JMRIYellowNumber = JMRIGreenNumber + 1;
+const int JMRIRedNumber    = JMRIGreenNumber + 2;
+const int JMRIAuxNumber    = JMRIGreenNumber + 3;
 
 /*
   ///////////// DON'T CHANGE ANYTHING BELOW THIS LINE /////////////
@@ -22,7 +28,7 @@ const int JMRIAuxNumber = 893;
   including an occupancy detector and 4 channels of digital output for driving a three light 
   signal head plus one auxillary output.
 
-  It connects to the provided WiFi access point using ssid and password and gets its IP address 
+  It connects to the provided WiFi access point using Ssid and Pswd and gets its IP address 
   by DHCP.
 
   It connects to an MQTT server somewhere on the network, using JMRISensorNumber for an ID.  
@@ -97,13 +103,27 @@ boolean AnalogSent = true;
 
 
 
+void publish(String topic, String payload) {
+    Serial.println("Publish topic: " + topic + " message: " + payload);
+    client.publish(topic.c_str() , payload.c_str(), true);
+}
+
+
+
+void subscribe(String topic) {
+      client.subscribe(topic.c_str());
+      Serial.println("Subscribed to : " + topic);
+}
+
+
+
 void setup_wifi() {
   delay(10);
   Serial.println();
 
   // We start by connecting to a WiFi network
-  Serial.print("Connecting to " + String(Ssid));
-  WiFi.begin(Ssid, Pswd);
+  Serial.print("Connecting to " + String(MYSSID));
+  WiFi.begin(MYSSID, PASSWD);
   
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -117,15 +137,11 @@ void setup_wifi() {
 
 void sendOneBit() {
   // publish a message when the occupancy bit changes
-  String payload;
   
   if (SensorState)
-    payload = "ACTIVE";
+    publish(SensorTopic, "INACTIVE");
   else
-    payload = "INACTIVE";
-     
-  Serial.println("Publish topic: " + String(SensorTopic) + " message: " + payload);
-  client.publish(SensorTopic.c_str(), payload.c_str(), true);
+    publish(SensorTopic, "ACTIVE");
 }
 
 
@@ -201,15 +217,11 @@ void reconnect() {
     // Attempt to connect
     if (client.connect(String(JMRISensorNumber).c_str())) {
       Serial.println("connected");
-      client.subscribe(GreenTopic.c_str());
-      Serial.println("Subscribed to : " + GreenTopic);
-      client.subscribe(YellowTopic.c_str());
-      Serial.println("Subscribed to : " + YellowTopic);
-      client.subscribe(RedTopic.c_str());
-      Serial.println("Subscribed to : " + RedTopic);
-      client.subscribe(AuxTopic.c_str());
-      Serial.println("Subscribed to : " + AuxTopic);
-    } else {
+      subscribe(GreenTopic);
+      subscribe(YellowTopic);
+      subscribe(RedTopic);
+      subscribe(AuxTopic);
+  } else {
       Serial.print("failed, rc=" + String(client.state()) + " wifi=" + WiFi.status());
       Serial.println(" try again in 5 seconds");
       // Wait 5 seconds before retrying
@@ -242,10 +254,7 @@ void setup() {
 
 void sendAnalog() {
   // This requires a 182k resistor between 5V and A0
-  
-    String payload = String(analogRead(A0) / AnalogCalibrate).c_str();
-    Serial.println("Publish topic: " + AnalogTopic + " message: " + payload);
-    client.publish(AnalogTopic.c_str(), payload.c_str(), true);
+  publish(AnalogTopic, String(analogRead(A0) / AnalogCalibrate));
 }
 
       
