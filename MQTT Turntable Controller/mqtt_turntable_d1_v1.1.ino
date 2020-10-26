@@ -33,7 +33,7 @@ const int ProgStepSize = 5;   // 1 determines how fast the stepper moves while p
 const int Ray0Offset = 0;
 // Set the following to 9999999 if you want don't want the motor to take the shortest route, but 
 // to return the opposite direction from whence it came.  Set to 3200 for direct drive turntable.
-const int StepsPerRev = 19200;  // 3200  
+const int StepsPerRev = 19786;  // 3200  
 
 /*
   Written for Wemos (or clone) D1 mini
@@ -186,7 +186,7 @@ void moveToRay(int rayNum) {
 
 
 
-void moveHome() {
+long moveHome() {
   int i;
   Serial.print("moveHome() Start...");
   Stpr.setMaxSpeed(MaxHomingSpeed);    // maximum speed after full acceleration
@@ -206,7 +206,7 @@ void moveHome() {
     Stpr.stop();
   }
 
-  Serial.print("Moving to home...");
+  Serial.print("Going home...");
   Stpr.move(StepsPerRev * ToHome);  // move up to one full revolution
 
   while (digitalRead(HOME) != SensorAtHome) {
@@ -214,14 +214,14 @@ void moveHome() {
     ESP.wdtFeed();  // retrigger the watchdog timer, just in case
   }
 
-  Serial.print("Saving home pos...");
+  Serial.print("Saving home...");
   int homeLoc = Stpr.currentPosition();   // get position where home sensor triggered
   Stpr.stop();  // stop after deceleration 
   
   while(Stpr.run())
     ESP.wdtFeed();  // retrigger the watchdog timer, just in case  
 
-  Serial.print("Moving to saved pos...");
+  Serial.print("Moving to saved...");
   Stpr.moveTo(homeLoc);  // go back to position saved as home
   
   while(Stpr.run())
@@ -229,6 +229,7 @@ void moveHome() {
 
   Stpr.setCurrentPosition(0);
   Serial.println("Done.");
+  return(homeLoc);
 }
 
 
@@ -421,6 +422,33 @@ void getRayPositions() {
 
 
 
+void testRotationCount() {
+  long homeLoc;
+  long sum = 0;
+  float avg;
+      
+  Serial.println("testRotationCount() Start...");
+  Stpr.setAcceleration(AccelerationFactor);  // acceleration factor, library default is 50
+  Stpr.setMaxSpeed(MaxHomingSpeed);    // maximum speed after full acceleration
+  
+  for (int n = 0;;n++) {  // this runs forever
+    homeLoc = abs(moveHome());
+    Stpr.move(700 * ToHome);  // move up to one full revolution
+    
+    while(Stpr.run())
+      ESP.wdtFeed();  // retrigger the watchdog timer, just in case
+
+    if (n > 0) {
+        sum += homeLoc;
+        avg = (float) sum / n;
+        Serial.println("n=" + String(n) + " count=" + String(homeLoc)
+          + " average=" + String(avg));
+    }
+  }
+}
+
+
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting setup");
@@ -435,7 +463,10 @@ void setup() {
   pinMode(PUSHBTN1, INPUT);
   pinMode(PUSHBTN2, INPUT_PULLUP);
   pinMode(HOME, INPUT_PULLUP);
-  
+
+  if (!digitalRead(PUSHBTN2))
+    testRotationCount();
+
   Serial.println("Analog voltage=" + String(analogRead(A0) / analogCalibrate));
   setupWifi();
   client.setServer(MQTTServer, 1883);
