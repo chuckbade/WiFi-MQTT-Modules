@@ -20,8 +20,8 @@
 const char* MqttServer = "192.168.1.13";
 
 // change the following two lines for your sensor/output configuration
-const int JMRISensorNumber = 400;  // This is a JMRI number, i.e. DS400, must be unique
-const int JMRITurnoutNumber = 60;  // This is a JMRI number, i.e. DT55
+const int JMRISensorNumber = 406;  // This is a JMRI number, i.e. DS400, must be unique
+const int JMRITurnoutNumber = 72;  // This is a JMRI number, i.e. DT55
 
 // Time between each degree of movement in milliseconds, 25 is nice and slow.
 const int ServoDelay = 10;         // If you're not using a servo, set this to zero           
@@ -135,18 +135,16 @@ void setup_wifi() {
     delay(500);
     Serial.print(".");
   }
-  
-  Serial.println(" connected. IP address: " + WiFi.localIP());
+
+  Serial.println("connected. IP address: " + WiFi.localIP().toString());
 }
 
 
 
 void savePositions() {
  // save the closed and thrown servo positions
-  Serial.println("Saving positions, ServoClosed=" + String(ServoClosed) 
-    + " EEaddressClosed=" + String(EEaddressClosed)
-    + " ServoThrown=" + String(ServoThrown)
-    + " EEaddressThrown=" + String(EEaddressThrown));
+  Serial.println("Saving positions, ServoClosed=" + String(ServoClosed)
+    + " ServoThrown=" + String(ServoThrown));
   EEPROM.put(EEaddressClosed, ServoClosed);
   EEPROM.put(EEaddressThrown, ServoThrown);
   EEPROM.commit();
@@ -156,7 +154,7 @@ void savePositions() {
 
 void saveState(int i) {
  // save the last state
-  Serial.println("Saving state=" + String(i) + " EEaddressLastState=" + String(EEaddressLastState));
+  Serial.println("Saving state=" + String(i));
   EEPROM.put(EEaddressLastState, i);
   EEPROM.commit();
 }
@@ -399,8 +397,7 @@ void setup() {
     ServoThrown = ServoThrownDefault;
   }
 
-  Serial.println("EEaddressClosed=" + String(EEaddressClosed) + " ServoClosed=" + String(ServoClosed) 
-    + "EEaddressThrown=" + String(EEaddressThrown) + " ServoThrown=" + String(ServoThrown));
+  Serial.println("ServoClosed=" + String(ServoClosed) + " ServoThrown=" + String(ServoThrown));
 
   
   Serial.println("Analog voltage=" + String(analogRead(A0) / AnalogCalibrate));
