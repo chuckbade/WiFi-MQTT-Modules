@@ -15,7 +15,6 @@
 #include <SSIDPASSWD.h>
 #endif
 
-// const char* MQTTServer = "192.168.1.21";
 const char* MQTTServer = "192.168.1.13";
 
 // change the following three lines for your sensor/output configuration

@@ -15,8 +15,8 @@
 const char* MqttServer = "192.168.1.13";
 
 // change the following three lines for your sensor/output configuration
-const int JMRISensorNumber = 508;  // This is a JMRI number, i.e. MS400, must be unique
-const int JMRIGreenNumber  = 824;    // These are JMRI numbers, i.e. MT55
+const int JMRISensorNumber = 526;  // This is a JMRI number, i.e. MS400, must be unique
+const int JMRIGreenNumber  = 878;    // These are JMRI numbers, i.e. MT55
 const int JMRIYellowNumber = JMRIGreenNumber + 1;
 const int JMRIRedNumber    = JMRIGreenNumber + 2;
 const int JMRIAuxNumber    = JMRIGreenNumber + 3;
@@ -130,7 +130,7 @@ void setup_wifi() {
     Serial.print(".");
   }
   
-  Serial.println(" connected. IP address: " + WiFi.localIP());
+  Serial.println(" connected. IP address: " + WiFi.localIP().toString());
 }
 
 

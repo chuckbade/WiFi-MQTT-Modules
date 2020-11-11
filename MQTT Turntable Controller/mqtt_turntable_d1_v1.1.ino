@@ -118,7 +118,7 @@ void setupWifi() {
     Serial.print(".");
   }
   
-  Serial.println(" connected. IP address: " + WiFi.localIP());
+  Serial.println(" connected. IP address: " + WiFi.localIP().toString());
 }
 
 
