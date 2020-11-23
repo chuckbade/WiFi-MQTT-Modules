@@ -15807,10 +15807,10 @@ Source: http://www.diodes.com/datasheets/ds23001.pdf</description>
 <part name="U$1" library="diy-modules" deviceset="WEMOS-D1-MINI" device=""/>
 <part name="V2" library="supply2" deviceset="VCC" device=""/>
 <part name="V3" library="supply2" deviceset="GND" device=""/>
-<part name="D1" library="diode" deviceset="DIODE-" device="DO-214AC"/>
+<part name="D1" library="diode" deviceset="DIODE-" device="DO-214AC" value="S1BBTR"/>
 <part name="S1" library="wirepad" deviceset="2,15/1,0" device=""/>
 <part name="S2" library="wirepad" deviceset="2,15/1,0" device=""/>
-<part name="D2" library="diode" deviceset="DIODE-" device="SOD123"/>
+<part name="D2" library="diode" deviceset="DIODE-" device="SOD123" value="1N4148"/>
 <part name="P2" library="wirepad" deviceset="2,15/1,0" device="" value="NA"/>
 <part name="C7" library="rcl" deviceset="C-US" device="C1206" value=".47uF"/>
 <part name="V5" library="supply2" deviceset="GND" device=""/>
@@ -15823,7 +15823,7 @@ Source: http://www.diodes.com/datasheets/ds23001.pdf</description>
 <part name="TS2" library="cdb" deviceset="TERMBLK05" device=""/>
 <part name="TS1" library="cdb" deviceset="TERMBLK05" device=""/>
 <part name="C4" library="rcl" deviceset="CPOL-US" device="E3.5-8" value="100uF"/>
-<part name="D3" library="diode" deviceset="DIODE-" device="SOD123"/>
+<part name="D3" library="diode" deviceset="DIODE-" device="SOD123" value="1N4148"/>
 <part name="V6" library="supply2" deviceset="GND" device=""/>
 </parts>
 <sheets>
@@ -15904,7 +15904,10 @@ Source: http://www.diodes.com/datasheets/ds23001.pdf</description>
 <instance part="U$1" gate="G$1" x="520.7" y="220.98"/>
 <instance part="V2" gate="G$1" x="538.48" y="210.82" rot="R180"/>
 <instance part="V3" gate="GND" x="548.64" y="208.28" rot="MR0"/>
-<instance part="D1" gate="G$1" x="431.8" y="134.62"/>
+<instance part="D1" gate="G$1" x="431.8" y="134.62" smashed="yes">
+<attribute name="NAME" x="430.022" y="131.0386" size="1.778" layer="95"/>
+<attribute name="VALUE" x="427.99" y="136.6266" size="1.778" layer="96"/>
+</instance>
 <instance part="S1" gate="1" x="553.72" y="162.56" smashed="yes" rot="R270">
 <attribute name="NAME" x="549.529" y="161.8742" size="1.778" layer="95"/>
 <attribute name="VALUE" x="550.418" y="163.703" size="1.778" layer="96" rot="R270"/>
@@ -15915,7 +15918,7 @@ Source: http://www.diodes.com/datasheets/ds23001.pdf</description>
 </instance>
 <instance part="D2" gate="G$1" x="558.8" y="147.32" smashed="yes" rot="R90">
 <attribute name="NAME" x="560.578" y="146.5326" size="1.778" layer="95"/>
-<attribute name="VALUE" x="561.1114" y="149.86" size="1.778" layer="96" rot="R90"/>
+<attribute name="VALUE" x="566.1914" y="144.78" size="1.778" layer="96" rot="R90"/>
 </instance>
 <instance part="P2" gate="1" x="561.34" y="172.72" smashed="yes">
 <attribute name="NAME" x="562.483" y="175.9458" size="1.778" layer="95" rot="R180"/>
@@ -15956,7 +15959,7 @@ Source: http://www.diodes.com/datasheets/ds23001.pdf</description>
 <instance part="C4" gate="G$1" x="474.98" y="127"/>
 <instance part="D3" gate="G$1" x="535.94" y="134.62" smashed="yes" rot="R90">
 <attribute name="NAME" x="537.718" y="133.8326" size="1.778" layer="95"/>
-<attribute name="VALUE" x="538.2514" y="137.16" size="1.778" layer="96" rot="R90"/>
+<attribute name="VALUE" x="533.1714" y="129.54" size="1.778" layer="96" rot="R90"/>
 </instance>
 <instance part="V6" gate="GND" x="535.94" y="127"/>
 </instances>
