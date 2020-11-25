@@ -13,12 +13,12 @@
 // Place the file in C:\Users\<name>\Documents\Arduino\libraries\Personal\
 //#define MYSSID "YourNetwork"
 //#define PASSWD "YourPassword"
+//#define MQTTIP "192.168.1.13"
 
 #ifndef MYSSID
 #include <SSIDPASSWD.h>
 #endif
 
-const char* MQTTServer = "192.168.1.13";
 const int JMRISensorNumber  = 620;  // 950 JMRI number of first sensor, i.e. MS400, must be unique
 const int JMRITurnoutNumber = 120;   // 950 JMRI number of first ray (turnout), i.e. MT55
 
@@ -469,7 +469,7 @@ void setup() {
 
   Serial.println("Analog voltage=" + String(analogRead(A0) / analogCalibrate));
   setupWifi();
-  client.setServer(MQTTServer, 1883);
+  client.setServer(MQTTIP, 1883);
   client.setCallback(callback);
 
   for (int i = 0; i < MAX_RAYS; i++) {
