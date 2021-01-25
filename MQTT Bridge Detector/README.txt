@@ -1,0 +1,1 @@
+This 2-Sensor MQTT/JMRI sketch is for Rob Teed and is not meant for long-term support.  It uses the D0 input, which I have suspected could cause lockups if D0 is grounded on startup.  I can't confirm it and can't find any warning online, but just in case, I no longer use D0 for an input on my newest designs.
