@@ -1,6 +1,6 @@
 /*
   MQTT (DCCPPD) Block Controller Node
-  Chuck Bade 8/23/20
+  Chuck Bade 3/16/21
 */
 
 // Update and uncomment these with values suitable for your network or use an include file.
@@ -14,11 +14,23 @@
 #endif
 
 // change the following three lines for your sensor/output configuration
-const int JMRISensorNumber = 526;  // This is a JMRI number, i.e. MS400, must be unique
-const int JMRIGreenNumber  = 878;    // These are JMRI numbers, i.e. MT55
+const int JMRISensorNumber = 522;  // This is a JMRI number, i.e. MS400, must be unique
+const int JMRIGreenNumber  = 866;    // These are JMRI numbers, i.e. MT55
 const int JMRIYellowNumber = JMRIGreenNumber + 1;
 const int JMRIRedNumber    = JMRIGreenNumber + 2;
 const int JMRIAuxNumber    = JMRIGreenNumber + 3;
+
+/*
+ The analog reading reads whatever is on the 5V pin, if there is a 182k resistor 
+ between 5V and A0.  The AnalogCalibrate provides a way of adjusting the reading
+ for variance in resistor and ADC values.  Use a 1% resistor if possible.
+ The purpose for monitoring the 5V level is to determine if there is excessive voltage
+ drop between the power supply and the devices.  If the 5V drops below 4.75V, there
+ could be various malfunctions and data loss.  Adjust when programming the module.
+ To adjust: New AnalogCalibrate = (reported/actual) * AnalogCalibrate
+*/
+const float AnalogCalibrate = 196.3;
+
 
 /*
   ///////////// DON'T CHANGE ANYTHING BELOW THIS LINE /////////////
@@ -53,7 +65,7 @@ const int JMRIAuxNumber    = JMRIGreenNumber + 3;
   In other words, two or more nodes could all throw or close MT55.  However, the sensors numbers
   would need to be unique.
 
-  The sketch will periodically publish "battery" voltage, which measures the voltage on the 5V 
+  The sketch will periodically publish an analog voltage, which measures the voltage on the 5V 
   pin.  The JMRISensorNumber value is also the ID used in the analog output supply voltage 
   messages, so it should be set to a number unique to that node.
 
@@ -64,12 +76,8 @@ const int JMRIAuxNumber    = JMRIGreenNumber + 3;
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-/*
- * The battery reading reads whatever is on the 5V pin, if there is a 182k resistor 
- * between 5V and A0.  The battCalibrate provides a way of adjusting the reading
- * for variance in resistor values.  Use a 1% resistor if possible.
- */
-const float AnalogCalibrate = 208.2;
+
+
 
 // topic used for publishing sensor data
 const String SensorTopic = "/trains/track/sensor/" + String(JMRISensorNumber);    
@@ -92,6 +100,7 @@ const int RedPin    = 13; // D7/GPIO13
 const int AuxPin    = 15; // D8/GPIO15  12k pull down
 const int LedPin    = 2;  // D4/GPIO2   Pulled up to 3.3v with LED1 and 1k resistor 
 
+const int StartupDelay = JMRISensorNumber % 15;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -99,6 +108,7 @@ PubSubClient client(espClient);
 int SensorState = 0;
 int SensorSignal = 0;
 boolean AnalogSent = true;
+long Avg_analog = 1000000;
 
 
 
@@ -110,8 +120,12 @@ void publish(String topic, String payload) {
 
 
 void subscribe(String topic) {
-      client.subscribe(topic.c_str());
-      Serial.println("Subscribed to : " + topic);
+  // publish an empty output message to clear any retained messages
+  client.publish(topic.c_str(), "", true);   
+  Serial.println("Clearing previously retained messages for topic: " + topic);
+  
+  client.subscribe(topic.c_str());
+  Serial.println("Subscribed to : " + topic);
 }
 
 
@@ -233,7 +247,11 @@ void reconnect() {
 
 
 void setup() {
+  long sum;
   Serial.begin(115200);
+  Serial.println("");
+  Serial.println("Waiting " + String(StartupDelay) + " seconds before starting to reduce server pile-up.");
+  delay(StartupDelay * 1000);
   Serial.println("Starting setup");
 
   pinMode(SensorPin, INPUT);
@@ -243,7 +261,6 @@ void setup() {
   pinMode(AuxPin, OUTPUT);
   pinMode(LedPin, OUTPUT);
 
-  Serial.println("Analog voltage=" + String(analogRead(A0) / AnalogCalibrate));
   setup_wifi();
   client.setServer(MQTTIP, 1883);
   client.setCallback(callback);
@@ -251,9 +268,12 @@ void setup() {
 
 
 
-void sendAnalog() {
+void sendAnalog(float avg) {
+  if (avg == 0)
+    avg = analogRead(A0);
+    
   // This requires a 182k resistor between 5V and A0
-  publish(AnalogTopic, String(analogRead(A0) / AnalogCalibrate));
+  publish(AnalogTopic, String((avg / 1000) / AnalogCalibrate));
 }
 
       
@@ -290,12 +310,14 @@ void loop() {
     sendOneBit();
   }
 
-  // if 60 seconds has passed, send the analog value
-    
-  analogTime = millis() % 60000;  // send the analog value every minute 
+  // calculate a moving average of the analog reading
+  Avg_analog = ((Avg_analog * 99) + (analogRead(A0) * 1000)) / 100;
   
+  // send it every 60 seconds, with an offset to avoid pile-ups
+  analogTime = ((millis() + ((JMRISensorNumber % 60) * 1000)) % 60000); 
+
   if ((!AnalogSent) && (analogTime < 1000)) { 
-    sendAnalog();
+    sendAnalog(Avg_analog);
     AnalogSent = true; 
   }
   

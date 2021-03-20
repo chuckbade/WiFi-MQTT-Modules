@@ -1,35 +1,41 @@
 /*
   MQTT Turnout Node
-  Chuck Bade 8/21/20
+  Chuck Bade 3/16/21
 */
-
-#include <ESP8266WiFi.h>
-#include <PubSubClient.h>
-#include <Servo.h>
-#include <EEPROM.h>
 
 // Update and uncomment these with values suitable for your network or use an include file.
 // Place the file in C:\Users\<name>\Documents\Arduino\libraries\Personal\
 //#define MYSSID "YourNetwork"
 //#define PASSWD "YourPassword"
+//#define MQTTIP" "192.168.1.13"
 
 #ifndef MYSSID
 #include <SSIDPASSWD.h>
 #endif
 
-const char* MqttServer = "192.168.1.13";
-
-// change the following two lines for your sensor/output configuration
-const int JMRISensorNumber = 406;  // This is a JMRI number, i.e. DS400, must be unique
-const int JMRITurnoutNumber = 72;  // This is a JMRI number, i.e. DT55
+// change the following two lines for your sensor/turnout configuration
+const int JMRISensorNumber = 405;  // This is a JMRI number, i.e. MS400, must be unique
+const int JMRITurnoutNumber = 70;  // This is a JMRI number, i.e. MT55
 
 // Time between each degree of movement in milliseconds, 25 is nice and slow.
 const int ServoDelay = 10;         // If you're not using a servo, set this to zero           
 const int PulseTime = 100;         // Time of pulse sent to snap-type turnouts
 
 // Set the following to TRUE if you want the turnout to be set to the previous state
-// on startup.
+// on startup.  WARNING: This is probably limited to 100,000 cylces, then no memory.
 #define RESTORE_LAST_STATE false
+
+/*
+ The analog reading reads whatever is on the 5V pin, if there is a 182k resistor 
+ between 5V and A0.  The AnalogCalibrate provides a way of adjusting the reading
+ for variance in resistor and ADC values.  Use a 1% resistor if possible.
+ The purpose for monitoring the 5V level is to determine if there is excessive voltage
+ drop between the power supply and the devices.  If the 5V drops below 4.75V, there
+ could be various malfunctions and data loss.  Adjust when programming the module.
+ To adjust: New AnalogCalibrate = (reported/actual) * AnalogCalibrate
+*/
+const float AnalogCalibrate = 194.4;
+
 
 /*
   /////////// DON'T CHANGE ANYTHING BELOW THIS LINE /////////////
@@ -64,7 +70,7 @@ const int PulseTime = 100;         // Time of pulse sent to snap-type turnouts
   In other words, two or more nodes could all throw or close MT55.  However, the sensors numbers
   would need to be unique.
 
-  The sketch will periodically publish "battery" voltage, which measures the voltage on the 5V 
+  The sketch will periodically publish an analog voltage, which measures the voltage on the 5V 
   pin.  The JMRISensorNumber value is also the ID used in the analog output supply voltage 
   messages, so it should be set to a number unique to that node.
 
@@ -82,6 +88,11 @@ const int PulseTime = 100;         // Time of pulse sent to snap-type turnouts
   D4/GPIO2   Pulled up to 3.3v with LED1 and 1k resistor.  Good for PB input or LED output. 
 */
 
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <Servo.h>
+#include <EEPROM.h>
+
 // pin numbers used
 #define UPBTN 16   // D0 Up button for programming servo positions.
 #define DNBTN 5    // D1 Down button for programming servo positions.
@@ -95,13 +106,7 @@ const int PulseTime = 100;         // Time of pulse sent to snap-type turnouts
 #define PROGOFF 0
 #define PROGCLOSED 1
 #define PROGTHROWN 2
-
-/*
- * The analog reading reads whatever is on the 5V pin, if there is a 182k resistor 
- * between 5V and A0.  The analogCalibrate variable provides a way of adjusting the 
- * reading for variance in resistor values.  Use a 1% resistor if possible.
- */
-const float AnalogCalibrate = 208.2;  // adjusted for 182k 1% from 5V to A0
+#define EE_READY 12345
 
 const String SensTopic = "/trains/track/sensor/" + String(JMRISensorNumber);    // topic for publishing sensor data
 const String OutTopic = "/trains/track/turnout/" + String(JMRITurnoutNumber);    // topic for incoming output commands
@@ -114,12 +119,21 @@ WiFiClient EspClient;
 PubSubClient Client(EspClient);
 Servo MyServo;
 boolean AnalogSent;
-int EEaddressClosed = 0;
+int EEaddressReady = 0;
+int EEaddressClosed = EEaddressReady + sizeof(int);
 int EEaddressThrown = EEaddressClosed + sizeof(int);
 int EEaddressLastState = EEaddressThrown + sizeof(int);
 int ServoClosed;
 int ServoThrown;
 int ProgramMode = PROGOFF;
+long Avg_analog = 1000000;
+
+
+
+void publish(String topic, String payload) {
+    Serial.println("Publish topic: " + topic + " message: " + payload);
+    Client.publish(topic.c_str() , payload.c_str(), true);
+}
 
 
 
@@ -147,24 +161,26 @@ void savePositions() {
     + " ServoThrown=" + String(ServoThrown));
   EEPROM.put(EEaddressClosed, ServoClosed);
   EEPROM.put(EEaddressThrown, ServoThrown);
+  EEPROM.put(EEaddressReady, EE_READY);
   EEPROM.commit();
 }
 
 
 
 void saveState(int i) {
- // save the last state
-  Serial.println("Saving state=" + String(i));
-  EEPROM.put(EEaddressLastState, i);
-  EEPROM.commit();
+  if (RESTORE_LAST_STATE) { 
+    // save the last state
+    Serial.println("Saving state=" + String(i));
+    EEPROM.put(EEaddressLastState, i);
+    EEPROM.commit();
+  }
 }
 
 
 
 void sendSensorState(char* payload) {
   // publish the sensor message
-  Serial.println("Publish topic: " + String(SensTopic) + " message: " + String(payload));
-  Client.publish(SensTopic.c_str(), payload, true);
+  publish(SensTopic.c_str(), payload);
 }
 
 
@@ -180,9 +196,10 @@ void pulseOutput() {
 
 
 
-void moveServo(int origin, int dest) {
+void moveServo(int dest) {
   // move the servo, degree by degree, from origin to destination
   int i;
+  int origin = MyServo.read();
   Serial.println("moveServo(): Moving from " + String(origin) + " to " + String(dest));
   
   if (dest > origin)
@@ -206,7 +223,7 @@ void closeTurnout() {
   Serial.println("Setting output pin " + String(THROWN) + " to LOW");
   digitalWrite(THROWN, LOW);
   pulseOutput();
-  moveServo(ServoThrown, ServoClosed);
+  moveServo(ServoClosed);
   sendSensorState("INACTIVE");
   saveState(CLOSED);  
 }
@@ -220,7 +237,7 @@ void throwTurnout() {
   Serial.println("Setting output pin " + String(CLOSED) + " to LOW");
   digitalWrite(CLOSED, LOW);
   pulseOutput();
-  moveServo(ServoClosed, ServoThrown);
+  moveServo(ServoThrown);
   sendSensorState("ACTIVE");  
   saveState(THROWN);
 }
@@ -254,10 +271,11 @@ boolean buttonHeld(int btn) {
 
 
 
-void bumpServo(int position, int offset) {
+void bumpServo(int offset) {
+  int position = MyServo.read();
   // move the servo out and back a little as feedback for the user
-  moveServo(position, position + offset);  // bump the servo for feedback
-  moveServo(position + offset, position);
+  moveServo(position + offset);  // bump the servo for feedback
+  moveServo(position);
 }
 
 
@@ -268,19 +286,19 @@ void buttonPushed() {
   if (ProgramMode == PROGCLOSED) {
     ProgramMode = PROGTHROWN;
     throwTurnout();
-    bumpServo(ServoThrown, -10);  // bump the servo for feedback
+    bumpServo(-10);  // bump the servo for feedback
     Serial.println("Entering programming mode: PROGTHROWN");
   }
   else if (ProgramMode == PROGTHROWN) {
     savePositions();
     ProgramMode = PROGOFF;
-    bumpServo(ServoThrown, -10);  // bump the servo for feedback
+    bumpServo(-10);  // bump the servo for feedback
     Serial.println("Exiting programming mode: PROGOFF");
   }
   else if (buttonHeld(PUSHBTN)) {
     ProgramMode = PROGCLOSED;         // set programming mode
     closeTurnout();
-    bumpServo(ServoClosed, 10);  // bump the servo for feedback
+    bumpServo(10);  // bump the servo for feedback
     Serial.println("Entering programming mode: PROGCLOSED");
   }
   else {  
@@ -292,9 +310,10 @@ void buttonPushed() {
 
 
 
-void progMoveServo(int position, int offset) {
+void progMoveServo(int offset) {
+  int position = MyServo.read();
   // during programming mode, move the servo from position by the amount of offset
-  moveServo(position, position + offset);
+  moveServo(position + offset);
   delay(100);
   ESP.wdtFeed();  // retrigger the watchdog timer, just in case  
 }
@@ -308,18 +327,26 @@ void checkProgBtns() {
   
   if (!digitalRead(UPBTN)) {
     Serial.println("UP pushed");
-    if (ProgramMode == PROGCLOSED)
-      progMoveServo(ServoClosed++, 1);
-    else if (ProgramMode == PROGTHROWN)
-      progMoveServo(ServoThrown++, 1);
+    if (ProgramMode == PROGCLOSED) {
+      ServoClosed++;
+      progMoveServo(1);
+    }
+    else if (ProgramMode == PROGTHROWN) {
+      ServoThrown++;
+      progMoveServo(1);
+    }
   }
 
   else if (!digitalRead(DNBTN)) {
     Serial.println("DOWN pushed");
-    if (ProgramMode == PROGCLOSED)
-      progMoveServo(ServoClosed--, -1);
-    else if (ProgramMode == PROGTHROWN)
-      progMoveServo(ServoThrown--, -1);
+    if (ProgramMode == PROGCLOSED) {
+      ServoClosed--;
+      progMoveServo(-1);
+    }
+    else if (ProgramMode == PROGTHROWN) {
+      ServoThrown--;
+      progMoveServo(-1);
+    }
   }
 }    
 
@@ -354,6 +381,9 @@ void reconnect() {
     // Attempt to connect
     if (Client.connect(String(JMRISensorNumber).c_str())) {
       Serial.println("connected");
+      // publish an empty output message to clear any retained messages
+      publish(OutTopic.c_str(), "");   
+      
       Client.subscribe(OutTopic.c_str());
       Serial.println("Subscribed to : " + String(OutTopic));
     } else {
@@ -369,14 +399,10 @@ void reconnect() {
 
 void setup() {
   int state;
+  int eeReady;
   
   Serial.begin(115200);
   Serial.println("Starting setup");
-  EEPROM.begin(256);
-  
-  AnalogSent = true;
-
-  MyServo.attach(SERVO);         // D2
 
   pinMode(UPBTN, INPUT_PULLUP);  // D0
   pinMode(DNBTN, INPUT_PULLUP);  // D1
@@ -384,14 +410,19 @@ void setup() {
   pinMode(THROWN, OUTPUT);       // D6
   pinMode(PULSE, OUTPUT);        // D7
   pinMode(PUSHBTN, INPUT);       // D4
+  
+  EEPROM.begin(256);
+  
+  // There are four values saved to EEPROM, the closed and thrown servo positions
+  // the ready (initialized) code, and the last state.
 
-  // There are three values saved to EEPROM, the closed and thrown servo positions
-  // and the last state.
-  // Get the saved positions
-  EEPROM.get(EEaddressClosed, ServoClosed);
-  EEPROM.get(EEaddressThrown, ServoThrown);
+  EEPROM.get(EEaddressReady, eeReady); 
    
-  if (ServoClosed == -1) {
+  if (eeReady == EE_READY) {
+    Serial.println("Getting saved positions.");
+    EEPROM.get(EEaddressClosed, ServoClosed);
+    EEPROM.get(EEaddressThrown, ServoThrown);
+  } else {
     Serial.println("Setting default positions.");
     ServoClosed = ServoClosedDefault;
     ServoThrown = ServoThrownDefault;
@@ -399,32 +430,34 @@ void setup() {
 
   Serial.println("ServoClosed=" + String(ServoClosed) + " ServoThrown=" + String(ServoThrown));
 
+  Serial.println("Attaching servo.");
+  MyServo.attach(SERVO);         // D2
+  MyServo.write(ServoClosed);  // an immediate write prevents the jerk to 90 and back
+  closeTurnout();              // follow up with this to set the outputs properly
+  Serial.println("Attaching servo done.");
+
+  AnalogSent = true;  // make them wait for one period before getting first reading
   
-  Serial.println("Analog voltage=" + String(analogRead(A0) / AnalogCalibrate));
   setup_wifi();
-  Client.setServer(MqttServer, 1883);
+  Client.setServer(MQTTIP, 1883);
   Client.setCallback(callback);
   
   if (RESTORE_LAST_STATE) {
     EEPROM.get(EEaddressLastState, state);
   
-    if (state == CLOSED)
-      closeTurnout();
-    else
+    if (state == THROWN)
       throwTurnout();
-  } 
-//  else
-  //  closeTurnout();
-    
+  }    
 }
 
 
 
-void sendAnalog() {
+void sendAnalog(float avg) {
+  if (avg == 0)
+    avg = analogRead(A0);
+    
   // This requires a 182k resistor between 5V and A0
-  String payload = String(analogRead(A0) / AnalogCalibrate);
-  Serial.println("Publish topic: " + String(AnalogTopic) + " message: " + payload);
-  Client.publish(AnalogTopic.c_str(), payload.c_str(), true);
+  publish(AnalogTopic, String((avg / 1000) / AnalogCalibrate));
 }
 
 
@@ -447,12 +480,15 @@ void loop() {
   if (ProgramMode)
     checkProgBtns();
 
-  // if 60 seconds has passed, send the analog value
+
+  // calculate a moving average of the analog reading
+  Avg_analog = ((Avg_analog * 99) + (analogRead(A0) * 1000)) / 100;
   
-  analogTime = millis() % 60000;  // send the analog value every minute 
-  
+  // send it every 60 seconds, with an offset to avoid pile-ups
+  analogTime = ((millis() + ((JMRISensorNumber % 60) * 1000)) % 60000); 
+
   if ((!AnalogSent) && (analogTime < 1000)) { 
-    sendAnalog();
+    sendAnalog(Avg_analog);
     AnalogSent = true; 
   }
   
