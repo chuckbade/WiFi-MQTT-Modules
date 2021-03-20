@@ -1,6 +1,6 @@
 /*
   MQTT 5 Sensor Node
-  Chuck Bade 8/25/20
+  Chuck Bade 3/20/21
 */
 
 #include <ESP8266WiFi.h>
@@ -21,6 +21,18 @@
 // change the following three lines for your sensor/output configuration
 const int JMRISensorNumber = 900;  // The first sensor, a JMRI number, i.e. MS400, must be unique
 const int NumberOfSensors = 5;     // The number of inputs
+
+/*
+ The analog reading reads whatever is on the 5V pin, if there is a 182k resistor 
+ between 5V and A0.  The AnalogCalibrate provides a way of adjusting the reading
+ for variance in resistor and ADC values.  Use a 1% resistor if possible.
+ The purpose for monitoring the 5V level is to determine if there is excessive voltage
+ drop between the power supply and the devices.  If the 5V drops below 4.75V, there
+ could be various malfunctions and data loss.  Adjust when programming the module.
+ To adjust: New AnalogCalibrate = (reported/actual) * AnalogCalibrate
+*/
+const float AnalogCalibrate = 195.5;
+
 
 /*
   /////////// DON'T CHANGE ANYTHING BELOW THIS LINE /////////////
@@ -64,14 +76,6 @@ const int NumberOfSensors = 5;     // The number of inputs
  
  */
 
-
-/*
- * The battery reading reads whatever is on the 5V pin, if there is a 180k resistor 
- * between 5V and A0.  The battCalibrate provides a way of adjusting the reading
- * for variance in resistor values.  Use a 1% resistor if possible.
- */
-const float AnalogCalibrate = 208.2;
-
 // topics for publishing sensor data will be built in setup()
 const String SensorTopic = "/trains/track/sensor/";  
 
@@ -91,6 +95,8 @@ class Gpio {
 Gpio Channel[8];
 boolean AnalogSent = true;
 #define DEBOUNCE_COUNT 20
+long Avg_analog = 1000000;
+
 
 
 void publish(String topic, String payload) {
@@ -184,9 +190,12 @@ void setup() {
 
 
 
-void sendAnalog() {
+void sendAnalog(float avg) {
+  if (avg == 0)
+    avg = analogRead(A0);
+    
   // This requires a 182k resistor between 5V and A0
-  publish(AnalogTopic, String(analogRead(A0) / AnalogCalibrate));
+  publish(AnalogTopic, String((avg / 1000) / AnalogCalibrate));
 }
 
 
@@ -226,10 +235,14 @@ void loop() {
   }
 
 
-  analogTime = millis() % 60000;  // send the analog value every minute 
+  // calculate a moving average of the analog reading
+  Avg_analog = ((Avg_analog * 99) + (analogRead(A0) * 1000)) / 100;
+  
+  // send it every 60 seconds, with an offset to avoid pile-ups
+  analogTime = ((millis() + ((JMRISensorNumber % 60) * 1000)) % 60000); 
   
   if ((!AnalogSent) && (analogTime < 1000)) { 
-    sendAnalog();
+    sendAnalog(Avg_analog);
     AnalogSent = true; 
   }
   
