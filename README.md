@@ -1,6 +1,5 @@
 
-Using MQTT on ESP8266-Based Modules with JMRI for Model Trains
-Chuck Bade
+Chuck Bade's Guide to using MQTT on ESP8266-Based Modules with JMRI for Model Trains
 
 This is an inexpensive system of hardware and software for running model train accessories with JMRI.  I'm using a DCC++ setup for a base station, but any base station should be able to be used, as long as JMRI will allow the MQTT protocol to exist along side the other protocol.  Each module has a ESP8266-based Wemos D1 Mini (or compatible) that sends and receives messages to and from JMRI.  These messages are sent via the MQTT protocol, which makes programming very straightforward using the Arduino IDE.  JMRI is setup to use both the MQTT and DCC++ protocols.
 
