@@ -1,18 +1,10 @@
 /*
   MQTT RoboCut Node
-  Chuck Bade 01/25/21
+  Chuck Bade 03/21/21
 */
-
-#include <ESP8266WiFi.h>
-#include <PubSubClient.h>
-#include <Servo.h>
 
 // Update and uncomment these 3 lines with values suitable for your network or use an include file.
 // Place the file in C:\Users\<name>\Documents\Arduino\libraries\Personal\
-
-// The analog reading reads whatever is on the 5V pin, if there is a 182k resistor 
-// between 5V and A0.  The VCCCAL constant provides a way of adjusting the 
-// reading for variance in resistor values.  Use a 1% resistor if possible.
 
 //#define MYSSID "YourNetwork"
 //#define PASSWD "YourPassword"
@@ -33,6 +25,17 @@ const int ServoAngle[]        = { 10, 90, 170};     // Servo positions
 
 // Time between each degree of movement in milliseconds
 const int ServoDelay = 2;         // 25 is nice and slow. Zero is fastest.           
+
+/*
+ The analog reading reads whatever is on the 5V pin, if there is a 182k resistor 
+ between 5V and A0.  The AnalogCalibrate provides a way of adjusting the reading
+ for variance in resistor and ADC values.  Use a 1% resistor if possible.
+ The purpose for monitoring the 5V level is to determine if there is excessive voltage
+ drop between the power supply and the devices.  If the 5V drops below 4.75V, there
+ could be various malfunctions and data loss.  Adjust when programming the module.
+ To adjust: New AnalogCalibrate = (reported/actual) * AnalogCalibrate
+*/
+const float AnalogCalibrate = 195.8;
 
 /*
   /////////// DON'T CHANGE ANYTHING BELOW THIS LINE /////////////
@@ -69,11 +72,6 @@ const int ServoDelay = 2;         // 25 is nice and slow. Zero is fastest.
   In other words, two or more nodes could all throw or close MT55.  However, the sensors numbers
   would need to be unique.
 
-  The sketch will periodically publish "battery" voltage, which measures the voltage on the 5V 
-  pin.  The JMRISensorNumber[A] value is also the ID used in the analog output supply voltage 
-  messages, so it should be set to a number unique to that node.
-
-
   The D1 Mini has 8 pins that will work for I/O but some pins better for certain purposes
   than others. 
   D0/GPIO16  Can be used as an input if it will not be low on power up.  This can cause 
@@ -87,6 +85,11 @@ const int ServoDelay = 2;         // 25 is nice and slow. Zero is fastest.
   D4/GPIO2   Pulled up to 3.3v with LED1 and 1k resistor.  Good for PB input or LED output. 
 
 */
+
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <Servo.h>
+
 
 // Create meaningful names for the array indexes.
 #define A 0
@@ -109,6 +112,15 @@ Servo MyServo;
 boolean AnalogSent;
 int CurrentIndex = IDLE;
 long IdleMillis = 0;
+long Avg_analog = 1000000;
+
+
+
+void publish(String topic, String payload) {
+    Serial.println("Publish topic: " + topic + " message: " + payload);
+    Client.publish(topic.c_str() , payload.c_str(), true);
+}
+
 
 
 void setup_wifi() {
@@ -132,8 +144,7 @@ void setup_wifi() {
 void sendSensorState(int index, char* payload) {
   // publish the sensor message
   String topic = SensorTopic + JMRISensorNumber[index]; 
-  Serial.println("Publish topic: " + topic + " message: " + String(payload));
-  Client.publish(topic.c_str(), payload, true);
+  publish(topic.c_str(), payload);
 }
 
 
@@ -222,8 +233,9 @@ void callback(char* topic, byte* payload, unsigned int length) {
 void subscribe(int index) {
   String topic = TurnoutTopic + String(JMRITurnoutNumber[index]);
   // publish an empty output message to clear any retained messages
-  Client.publish(topic.c_str(), "", true);   
+  publish(topic.c_str(), "");   
   Serial.println("Clearing previously retained messages for topic: " + topic);
+
   Client.subscribe(topic.c_str());    // subscribe to the output messages
   Serial.println("Subscribed to : " + topic);
 }
@@ -287,11 +299,12 @@ void setup() {
 
 
 
-void sendAnalog() {
+void sendAnalog(float avg) {
+  if (avg == 0)
+    avg = analogRead(A0);
+    
   // This requires a 182k resistor between 5V and A0
-  String payload = String(analogRead(A0) / VCCCAL);   // get the value and convert it
-  Serial.println("Publish topic: " + String(AnalogTopic) + " message: " + payload);
-  Client.publish(AnalogTopic.c_str(), payload.c_str(), true);
+  publish(AnalogTopic, String((avg / 1000) / AnalogCalibrate));
 }
 
 
@@ -317,15 +330,17 @@ void loop() {
       digitalWrite(LedPin[CurrentIndex], (millis() % 400) / 200);
   }
     
-  // if 60 seconds has passed, send the analog value
+  // calculate a moving average of the analog reading
+  Avg_analog = ((Avg_analog * 99) + (analogRead(A0) * 1000)) / 100;
   
-  analogTime = ((millis() + ((JMRISensorNumber[A] % 60) * 1000)) % 60000); 
-  
+  // send it every 60 seconds, with an offset to avoid pile-ups
+  analogTime = ((millis() + ((JMRISensorNumber[0] % 60) * 1000)) % 60000); 
+
   if ((!AnalogSent) && (analogTime < 1000)) { 
-    sendAnalog();
+    sendAnalog(Avg_analog);
     AnalogSent = true; 
   }
-  
+ 
   if (analogTime > 1000) // wait just a bit to make sure we don't retrigger
     AnalogSent = false;
     
