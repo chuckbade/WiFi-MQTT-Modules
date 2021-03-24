@@ -1,6 +1,6 @@
 /*
   MQTT RoboCut Node
-  Chuck Bade 03/21/21
+  Chuck Bade 03/24/21
 */
 
 // Update and uncomment these 3 lines with values suitable for your network or use an include file.
@@ -26,16 +26,6 @@ const int ServoAngle[]        = { 10, 90, 170};     // Servo positions
 // Time between each degree of movement in milliseconds
 const int ServoDelay = 2;         // 25 is nice and slow. Zero is fastest.           
 
-/*
- The analog reading reads whatever is on the 5V pin, if there is a 182k resistor 
- between 5V and A0.  The AnalogCalibrate provides a way of adjusting the reading
- for variance in resistor and ADC values.  Use a 1% resistor if possible.
- The purpose for monitoring the 5V level is to determine if there is excessive voltage
- drop between the power supply and the devices.  If the 5V drops below 4.75V, there
- could be various malfunctions and data loss.  Adjust when programming the module.
- To adjust: New AnalogCalibrate = (reported/actual) * AnalogCalibrate
-*/
-const float AnalogCalibrate = 195.8;
 
 /*
   /////////// DON'T CHANGE ANYTHING BELOW THIS LINE /////////////
@@ -103,16 +93,12 @@ const int LedPin[] = {12, 0, 14};  // High when coupler A (D6) or B (D5) is cut.
 
 const String SensorTopic = "/trains/track/sensor/";
 const String TurnoutTopic = "/trains/track/turnout/";
-const String AnalogTopic = "/trains/track/analog/" + String(JMRISensorNumber[A]);  // topic for reporting supply voltage
-
 const int StartupDelay = JMRISensorNumber[A] % 15;WiFiClient EspClient;
 
 PubSubClient Client(EspClient);
 Servo MyServo;
-boolean AnalogSent;
 int CurrentIndex = IDLE;
 long IdleMillis = 0;
-long Avg_analog = 1000000;
 
 
 
@@ -291,7 +277,6 @@ void setup() {
   closeTurnout();                   // follow up with this to set the outputs properly
   Serial.println("Attaching servo done.");
 
-  Serial.println("Analog voltage=" + String(analogRead(A0) / VCCCAL));
   setup_wifi();
   Client.setServer(MQTTIP, 1883);
   Client.setCallback(callback);
@@ -299,18 +284,7 @@ void setup() {
 
 
 
-void sendAnalog(float avg) {
-  if (avg == 0)
-    avg = analogRead(A0);
-    
-  // This requires a 182k resistor between 5V and A0
-  publish(AnalogTopic, String((avg / 1000) / AnalogCalibrate));
-}
-
-
-
 void loop() {
-  long analogTime;
   int j;
   
   // confirm still connected to mqtt server
@@ -330,19 +304,6 @@ void loop() {
       digitalWrite(LedPin[CurrentIndex], (millis() % 400) / 200);
   }
     
-  // calculate a moving average of the analog reading
-  Avg_analog = ((Avg_analog * 99) + (analogRead(A0) * 1000)) / 100;
-  
-  // send it every 60 seconds, with an offset to avoid pile-ups
-  analogTime = ((millis() + ((JMRISensorNumber[0] % 60) * 1000)) % 60000); 
-
-  if ((!AnalogSent) && (analogTime < 1000)) { 
-    sendAnalog(Avg_analog);
-    AnalogSent = true; 
-  }
- 
-  if (analogTime > 1000) // wait just a bit to make sure we don't retrigger
-    AnalogSent = false;
     
   delay(10);
 }
