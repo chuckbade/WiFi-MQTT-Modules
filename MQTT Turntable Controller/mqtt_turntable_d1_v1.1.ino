@@ -1,6 +1,6 @@
 /*
   DCC++ Distributed MQTT (DCCPPD) Turntable Node
-  Chuck Bade 9/29/20
+  Chuck Bade 3/24/21
 */
 
 #include <AccelStepper.h>
@@ -19,8 +19,8 @@
 #include <SSIDPASSWD.h>
 #endif
 
-const int JMRISensorNumber  = 620;  // 950 JMRI number of first sensor, i.e. MS400, must be unique
-const int JMRITurnoutNumber = 120;   // 950 JMRI number of first ray (turnout), i.e. MT55
+const int JMRISensorNumber  = 600;  // JMRI number of first sensor, i.e. MS400, must be unique
+const int JMRITurnoutNumber = 100;   // JMRI number of first ray (turnout), i.e. MT55
 
 // Change the following three lines for your home sensor and motor configuration.
 const int ToHome = -1;    // -1 = CCW
@@ -29,13 +29,17 @@ const int SensorAtHome = HIGH;
 const int MaximumSpeed = 4000;
 const int MaxHomingSpeed = 600;
 const int AccelerationFactor = 500;  // how quickly it accelerates to max speed
-const int ProgStepSize = 5;   // 1 determines how fast the stepper moves while programming
+                               // 1 determines how fast the stepper moves while programming
+const int ProgStepSize = 10;    // 1=real slow, 5=belt drive turntable, 10=staging yard
 const int Ray0Offset = 0;
 // Set the following to 9999999 if you want don't want the motor to take the shortest route, but 
 // to return the opposite direction from whence it came.  Set to 3200 for direct drive turntable.
-const int StepsPerRev = 19786;  // 3200  
+const int StepsPerRev = 9999999;  // 3200=direct drive, 19786 belt drive turntable  
+
 
 /*
+  ///////////// DON'T CHANGE ANYTHING BELOW THIS LINE /////////////
+
   Written for Wemos (or clone) D1 mini
   This sketch was written specifically for operating a turntable or transfer table on a 
   model railroad.
@@ -49,11 +53,7 @@ const int StepsPerRev = 19786;  // 3200
   It will reconnect to the server if the connection is lost using a blocking reconnect function.   
   The sketch will also subscribe to messages from the base station and set the turnout when the 
   appropriate messages are received.  
-  It will periodically send a message with the "battery" voltage, which measures voltage on the 
-  5V pin if there is a 180k resistor between 5V and A0.  The analogCalibrate constant provides a
-  way of adjusting the reading for variance in resistor values.  Use a 1% resistor if possible.
  */
-const float analogCalibrate = 206.0;  // for 180k, need to tweak for 182k 1%
 
 
 ///////////// DON'T CHANGE ANYTHING BELOW THIS LINE /////////////
@@ -76,9 +76,6 @@ const float analogCalibrate = 206.0;  // for 180k, need to tweak for 182k 1%
 String SensorTopic[MAX_RAYS];  
 String TurnoutTopic[MAX_RAYS];  
 
-// topic for reporting supply voltage
-const String AnalogTopic = "/trains/track/analog/" + String(JMRISensorNumber);  
-
 WiFiClient espClient;
 PubSubClient client(espClient);
 AccelStepper Stpr(1, STEP, DIR);  // type 1 = external driver with Step and Direction
@@ -87,7 +84,6 @@ int CurrentRay;
 int LastRay = 0;
 long RayPosition[MAX_RAYS];
 boolean ProgRayMode;
-boolean AnalogSent;
 boolean Shortcut = false;
 
 
@@ -99,6 +95,10 @@ void publish(String topic, String payload) {
 
 
 void subscribe(String topic) {
+  // publish an empty output message to clear any retained messages
+  client.publish(topic.c_str(), "", true);   
+  Serial.println("Clearing previously retained messages for topic: " + topic);
+
   client.subscribe(topic.c_str());
   Serial.println("Subscribed to : " + topic);
 }
@@ -456,7 +456,6 @@ void setup() {
   ESP.wdtDisable();
   wdt_disable();
 
-  AnalogSent = true;
   pinMode(STEP, OUTPUT);
   pinMode(DIR, OUTPUT);
   pinMode(LED, OUTPUT);
@@ -467,7 +466,6 @@ void setup() {
   if (!digitalRead(PUSHBTN2))
     testRotationCount();
 
-  Serial.println("Analog voltage=" + String(analogRead(A0) / analogCalibrate));
   setupWifi();
   client.setServer(MQTTIP, 1883);
   client.setCallback(callback);
@@ -510,33 +508,20 @@ void setup() {
   digitalWrite(LED, IDLE);
 }
 
-
+    
 
 void loop() {
-  long analogTime;
-  
   // confirm still connected to mqtt server
   if (!client.connected())
     reconnect();
   
   client.loop();
-  
+ 
   if (!digitalRead(PUSHBTN1))
     button1Pushed();
 
   if (!digitalRead(PUSHBTN2))
     button2Pushed();
-
-  analogTime = millis() % 60000;  // send the analog value every minute 
-  
-  if ((!AnalogSent) && (analogTime < 1000)) { 
-    // This requires a 182k resistor between 5V and A0
-    publish(AnalogTopic, String(analogRead(A0) / analogCalibrate));
-    AnalogSent = true; 
-  }
-  
-  if (analogTime > 1000)
-    AnalogSent = false;
 
   // Move the motor
   if (Stpr.run()) {

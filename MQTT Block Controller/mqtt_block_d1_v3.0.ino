@@ -1,6 +1,6 @@
 /*
   MQTT (DCCPPD) Block Controller Node
-  Chuck Bade 3/16/21
+  Chuck Bade 3/24/21
 */
 
 // Update and uncomment these with values suitable for your network or use an include file.
@@ -14,22 +14,11 @@
 #endif
 
 // change the following three lines for your sensor/output configuration
-const int JMRISensorNumber = 522;  // This is a JMRI number, i.e. MS400, must be unique
-const int JMRIGreenNumber  = 866;    // These are JMRI numbers, i.e. MT55
+const int JMRISensorNumber = 530;  // This is a JMRI number, i.e. MS400, must be unique
+const int JMRIGreenNumber  = 890;    // These are JMRI numbers, i.e. MT55
 const int JMRIYellowNumber = JMRIGreenNumber + 1;
 const int JMRIRedNumber    = JMRIGreenNumber + 2;
 const int JMRIAuxNumber    = JMRIGreenNumber + 3;
-
-/*
- The analog reading reads whatever is on the 5V pin, if there is a 182k resistor 
- between 5V and A0.  The AnalogCalibrate provides a way of adjusting the reading
- for variance in resistor and ADC values.  Use a 1% resistor if possible.
- The purpose for monitoring the 5V level is to determine if there is excessive voltage
- drop between the power supply and the devices.  If the 5V drops below 4.75V, there
- could be various malfunctions and data loss.  Adjust when programming the module.
- To adjust: New AnalogCalibrate = (reported/actual) * AnalogCalibrate
-*/
-const float AnalogCalibrate = 196.3;
 
 
 /*
@@ -65,10 +54,6 @@ const float AnalogCalibrate = 196.3;
   In other words, two or more nodes could all throw or close MT55.  However, the sensors numbers
   would need to be unique.
 
-  The sketch will periodically publish an analog voltage, which measures the voltage on the 5V 
-  pin.  The JMRISensorNumber value is also the ID used in the analog output supply voltage 
-  messages, so it should be set to a number unique to that node.
-
   The D1 Mini has 8 pins that will work for I/O but some pins better for certain purposes
   than others.  See the definitions below.
   */
@@ -88,9 +73,6 @@ const String YellowTopic = "/trains/track/turnout/" + String(JMRIYellowNumber);
 const String RedTopic = "/trains/track/turnout/" + String(JMRIRedNumber);
 const String AuxTopic = "/trains/track/turnout/" + String(JMRIAuxNumber);
 
-// topic used for publishing supply voltage
-const String AnalogTopic = "/trains/track/analog/" + String(JMRISensorNumber);  
-
           // unused = 16; // D0/GPIO16  Not a good input, must be high on startup.
 const int SensorPin = 5;  // D1/GPIO5    
           // unused = 4;  // D2/GPIO4   
@@ -107,9 +89,6 @@ PubSubClient client(espClient);
 #define DEBOUNCE_COUNT 20
 int SensorState = 0;
 int SensorSignal = 0;
-boolean AnalogSent = true;
-long Avg_analog = 1000000;
-
 
 
 void publish(String topic, String payload) {
@@ -268,19 +247,7 @@ void setup() {
 
 
 
-void sendAnalog(float avg) {
-  if (avg == 0)
-    avg = analogRead(A0);
-    
-  // This requires a 182k resistor between 5V and A0
-  publish(AnalogTopic, String((avg / 1000) / AnalogCalibrate));
-}
-
-      
-
 void loop() {
-  long analogTime;
-  
   // confirm still connected to mqtt server
   if (client.connected() == false)
     reconnect();
@@ -310,19 +277,5 @@ void loop() {
     sendOneBit();
   }
 
-  // calculate a moving average of the analog reading
-  Avg_analog = ((Avg_analog * 99) + (analogRead(A0) * 1000)) / 100;
-  
-  // send it every 60 seconds, with an offset to avoid pile-ups
-  analogTime = ((millis() + ((JMRISensorNumber % 60) * 1000)) % 60000); 
-
-  if ((!AnalogSent) && (analogTime < 1000)) { 
-    sendAnalog(Avg_analog);
-    AnalogSent = true; 
-  }
-  
-  if (analogTime > 1000)
-    AnalogSent = false;
-    
   delay(10);
 }

@@ -1,5 +1,5 @@
 /*
-  MQTT 2 Sensor Node
+  MQTT Single Sensor Node
   Chuck Bade 3/24/21
 */
 
@@ -17,28 +17,27 @@
 #endif
 
 // change the following three lines for your sensor/output configuration
-const int JMRISensorNumber1 = 438;  // The first sensor, a JMRI number, i.e. MS400, must be unique
-const int JMRISensorNumber2 = 439;  // The second sensor, a JMRI number, i.e. MS401, must be unique
-
-
+const int JMRISensorNumber = 300;  // This is a JMRI number, i.e. MS400, must be unique
+const int JMRIPwrUpNumber = 301;  // This is a JMRI number, i.e. MS401, must be unique
 
 /*
   /////////// DON'T CHANGE ANYTHING BELOW THIS LINE /////////////
 
-  Written for Wemos (or clone) D1 Mini for reporting the status of 2 sensors on a model railroad.
+  Written for Wemos (or clone) D1 Mini for reporting the status of a sensor on a model railroad.
 
   It connects to the provided WiFi access point using ssid and password and gets its IP address 
   by DHCP.
 
   It connects to an MQTT server somewhere on the network, using JMRISensorNumber for an ID.  
-  Each node connecting to the MQTT broker needs a unique ID, therefore JMRISensorNumber1 must be
+  Each node connecting to the MQTT broker needs a unique ID, therefore JMRISensorNumber must be
   unique.  If the connection to the MQTT broker is lost, the sketch will attempt to reconnect
   using a blocking reconnect function.   
   
-  The sensor (input) numbers are set by the user.  The first sensor (input) is set as 
-  JMRISensorNumber1.  Each sensor will be handled in JMRI as MS###, where ### is the sensor number.
-  
-  If the state of the sensors change, they will publish the latest state so JMRI will read it and set 
+  The sensor (input) numbers is set by the user.  The sensor (input) is
+  set as JMRISensorNumber.  The sensor will be handled in JMRI as MS###, where ### is the sensor
+  number.
+
+  If the state of the sensor changes, it will publish the latest state so JMRI will read it and set 
   the state for the corresponding sensor.  It publishes the message "ACTIVE" or "INACTIVE" using the 
   topic "/trains/track/sensor/###", where ### is the sensor number in JMRI. 
   
@@ -59,21 +58,20 @@ const int JMRISensorNumber2 = 439;  // The second sensor, a JMRI number, i.e. MS
  
  */
 
-// topics for publishing sensor data will be built in setup()
-const String SensorTopic = "/trains/track/sensor/";  
+// pin numbers used
+#define SENSOR 5    // D1
+#define LED 2       // D4/GPIO2   Pulled up to 3.3v with LED1 and 1k resistor 
+
+// topics for publishing sensor data
+const String SensorTopic = "/trains/track/sensor/" + String(JMRISensorNumber);  
+const String PwrUpTopic = "/trains/track/sensor/" + String(JMRIPwrUpNumber);  
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-
-// This class provides a structure for the input/output channel information.
-class Gpio {
-  public:
-  int pin, state, signal;
-  String topic;
-};
-
-Gpio Channel[2];
 #define DEBOUNCE_COUNT 20
+int SensorState = 0;
+int SensorSignal = 0;
+boolean PowerUpSent = false;
 
 
 
@@ -96,26 +94,34 @@ void setup_wifi() {
     delay(500);
     Serial.print(".");
   }
-  
+
+ //print the local IP address
   Serial.println(" connected. IP address: " + WiFi.localIP().toString());
 }
 
 
-
-void sendOneBit(int bit) {
-  if (Channel[bit].state)
-    publish(Channel[bit].topic, "INACTIVE");
+void sendOneBit() {
+  // publish a message when the occupancy bit changes
+  
+  if (SensorState)
+    publish(SensorTopic, "ACTIVE");
   else
-    publish(Channel[bit].topic, "ACTIVE");
+    publish(SensorTopic, "INACTIVE");
+}
+
+
+
+void sendPowerUp() {
+  publish(PwrUpTopic, "INACTIVE");
+  delay(1000);
+  publish(PwrUpTopic, "ACTIVE");
 }
 
 
 
 void callback(char* topic, byte* payload, unsigned int length) {
-  int i;
-  Serial.print("Message arrived [" + String(topic) + "] ");
-
-  Serial.println("Ignoring message.");
+  Serial.println("Message arrived [" + String(topic) + "] ");
+  Serial.println("Errant message.  We subscribe to nothing.");
 }
 
 
@@ -126,7 +132,7 @@ void reconnect() {
     Serial.print("Attempting MQTT connection...");
 
     // Attempt to connect
-    if (client.connect(String(JMRISensorNumber1).c_str())) {
+    if (client.connect(String(JMRISensorNumber).c_str())) {
       Serial.println("connected");
     } else {
       Serial.print("failed, rc=" + String(client.state()) + " wifi=" + WiFi.status());
@@ -141,20 +147,14 @@ void reconnect() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Starting setup");                       
+  Serial.println("Starting setup");
 
-  Channel[0].pin = 16; // D0/GPIO16
-  Channel[0].state = 0;
-  Channel[0].signal = 0;
-  pinMode(Channel[0].pin, INPUT);
-  Channel[0].topic = SensorTopic + String(JMRISensorNumber1); 
+  SensorState = 0;
+  SensorSignal = 0;
 
-  Channel[1].pin = 5;  // D1/GPIO5
-  Channel[1].state = 0;
-  Channel[1].signal = 0;
-  pinMode(Channel[1].pin, INPUT);
-  Channel[1].topic = SensorTopic + String(JMRISensorNumber2); 
-
+  pinMode(SENSOR, INPUT_PULLUP);  // D1
+  pinMode(LED, OUTPUT);
+  
   setup_wifi();
   client.setServer(MQTTIP, 1883);
   client.setCallback(callback);
@@ -169,30 +169,32 @@ void loop() {
   
   client.loop();
 
-  // for the OD sensor input, read the pin, smooth it, and if it has changed send the data
+  // for the sensor input, read the pin, smooth it, and if it has changed send the data
 
   // Rather than reacting to a single glitch then waiting a "debounce" period, this
   // code requires the input to be predominantly changed for a number of cycles
-  // before sending the data to JMRI.
-
-  for (int i = 0; i < 2; i++) {
-    int sensor = digitalRead(Channel[i].pin);
+  // before send the data to the base station.
+  int sensor = digitalRead(SENSOR);
   
-    if (sensor == 1 && Channel[i].signal < DEBOUNCE_COUNT) 
-      Channel[i].signal++;
-    if (sensor == 0 && Channel[i].signal > 0) 
-      Channel[i].signal--;
+  if (sensor == 1 && SensorSignal < DEBOUNCE_COUNT) 
+    SensorSignal++;
+  if (sensor == 0 && SensorSignal > 0) 
+    SensorSignal--;
     
-    if (Channel[i].state == 1 && Channel[i].signal == 0){
-      Channel[i].state = 0;
-      digitalWrite(Channel[i].pin, Channel[i].state);
-      sendOneBit(i);
-    } else if (Channel[i].state == 0 && Channel[i].signal == DEBOUNCE_COUNT){
-      Channel[i].state = 1;
-      digitalWrite(Channel[i].pin, Channel[i].state);
-      sendOneBit(i);
-    }
+  if (SensorState == 1 && SensorSignal == 0){
+    SensorState = 0;
+    digitalWrite(LED, SensorState);
+    sendOneBit();
+  } else if (SensorState == 0 && SensorSignal == DEBOUNCE_COUNT){
+    SensorState = 1;
+    digitalWrite(LED, SensorState);
+    sendOneBit();
   }
 
+  if (!PowerUpSent) {
+    sendPowerUp();
+    PowerUpSent = true;
+  }
+    
   delay(10);
 }

@@ -1,6 +1,6 @@
 /*
   MQTT 2 Sensor Node
-  Chuck Bade 11/9/20
+  Chuck Bade 3/24/21
 */
 
 #include <ESP8266WiFi.h>
@@ -18,7 +18,9 @@
 
 // change the following three lines for your sensor/output configuration
 const int JMRISensorNumber1 = 438;  // The first sensor, a JMRI number, i.e. MS400, must be unique
-const int JMRISensorNumber2 = 439;  // The second sensor, a JMRI number, i.e. MS400, must be unique
+const int JMRISensorNumber2 = 439;  // The second sensor, a JMRI number, i.e. MS401, must be unique
+
+
 
 /*
   /////////// DON'T CHANGE ANYTHING BELOW THIS LINE /////////////
@@ -40,10 +42,6 @@ const int JMRISensorNumber2 = 439;  // The second sensor, a JMRI number, i.e. MS
   the state for the corresponding sensor.  It publishes the message "ACTIVE" or "INACTIVE" using the 
   topic "/trains/track/sensor/###", where ### is the sensor number in JMRI. 
   
-  The sketch will periodically publish "battery" voltage, which measures the voltage on the 5V 
-  pin.  The JMRISensorNumber value is also the ID used in the analog output supply voltage 
-  messages, so it should be set to a number unique to that node.
-
   The D1 Mini has 8 pins that will work for I/O but some pins better for certain purposes
   than others. 
   D0/GPIO16  Can be used as an input if it will not be low on power up.  This can cause 
@@ -61,19 +59,8 @@ const int JMRISensorNumber2 = 439;  // The second sensor, a JMRI number, i.e. MS
  
  */
 
-
-/*
- * The battery reading reads whatever is on the 5V pin, if there is a 180k resistor 
- * between 5V and A0.  The battCalibrate provides a way of adjusting the reading
- * for variance in resistor values.  Use a 1% resistor if possible.
- */
-const float AnalogCalibrate = 208.2;
-
 // topics for publishing sensor data will be built in setup()
 const String SensorTopic = "/trains/track/sensor/";  
-
-// topic for reporting supply voltage
-const String AnalogTopic = "/trains/track/analog/" + String(JMRISensorNumber1);  
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -86,8 +73,8 @@ class Gpio {
 };
 
 Gpio Channel[2];
-boolean AnalogSent = true;
 #define DEBOUNCE_COUNT 20
+
 
 
 void publish(String topic, String payload) {
@@ -168,7 +155,6 @@ void setup() {
   pinMode(Channel[1].pin, INPUT);
   Channel[1].topic = SensorTopic + String(JMRISensorNumber2); 
 
-  Serial.println("Analog voltage=" + String(analogRead(A0) / AnalogCalibrate));
   setup_wifi();
   client.setServer(MQTTIP, 1883);
   client.setCallback(callback);
@@ -176,16 +162,7 @@ void setup() {
 
 
 
-void sendAnalog() {
-  // This requires a 182k resistor between 5V and A0
-  publish(AnalogTopic, String(analogRead(A0) / AnalogCalibrate));
-}
-
-
-
 void loop() {
-  long analogTime;
-  
   // confirm still connected to mqtt server
   if (!client.connected())
     reconnect();
@@ -217,15 +194,5 @@ void loop() {
     }
   }
 
-  analogTime = millis() % 60000;  // send the analog value every minute 
-  
-  if ((!AnalogSent) && (analogTime < 1000)) { 
-    sendAnalog();
-    AnalogSent = true; 
-  }
-  
-  if (analogTime > 1000)
-    AnalogSent = false;
-    
   delay(10);
 }

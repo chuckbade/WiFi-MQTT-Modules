@@ -1,6 +1,6 @@
 /*
   MQTT Turnout Node
-  Chuck Bade 3/16/21
+  Chuck Bade 3/24/21
 */
 
 // Update and uncomment these with values suitable for your network or use an include file.
@@ -14,8 +14,8 @@
 #endif
 
 // change the following two lines for your sensor/turnout configuration
-const int JMRISensorNumber = 405;  // This is a JMRI number, i.e. MS400, must be unique
-const int JMRITurnoutNumber = 70;  // This is a JMRI number, i.e. MT55
+const int JMRISensorNumber = 408;  // This is a JMRI number, i.e. MS400, must be unique
+const int JMRITurnoutNumber = 76;  // This is a JMRI number, i.e. MT55
 
 // Time between each degree of movement in milliseconds, 25 is nice and slow.
 const int ServoDelay = 10;         // If you're not using a servo, set this to zero           
@@ -24,17 +24,6 @@ const int PulseTime = 100;         // Time of pulse sent to snap-type turnouts
 // Set the following to TRUE if you want the turnout to be set to the previous state
 // on startup.  WARNING: This is probably limited to 100,000 cylces, then no memory.
 #define RESTORE_LAST_STATE false
-
-/*
- The analog reading reads whatever is on the 5V pin, if there is a 182k resistor 
- between 5V and A0.  The AnalogCalibrate provides a way of adjusting the reading
- for variance in resistor and ADC values.  Use a 1% resistor if possible.
- The purpose for monitoring the 5V level is to determine if there is excessive voltage
- drop between the power supply and the devices.  If the 5V drops below 4.75V, there
- could be various malfunctions and data loss.  Adjust when programming the module.
- To adjust: New AnalogCalibrate = (reported/actual) * AnalogCalibrate
-*/
-const float AnalogCalibrate = 194.4;
 
 
 /*
@@ -69,11 +58,6 @@ const float AnalogCalibrate = 194.4;
   Multiple nodes can respond to the same turnout numbers, if they subsribe to the same topic.
   In other words, two or more nodes could all throw or close MT55.  However, the sensors numbers
   would need to be unique.
-
-  The sketch will periodically publish an analog voltage, which measures the voltage on the 5V 
-  pin.  The JMRISensorNumber value is also the ID used in the analog output supply voltage 
-  messages, so it should be set to a number unique to that node.
-
 
   The D1 Mini has 8 pins that will work for I/O but some pins better for certain purposes
   than others. 
@@ -110,7 +94,6 @@ const float AnalogCalibrate = 194.4;
 
 const String SensTopic = "/trains/track/sensor/" + String(JMRISensorNumber);    // topic for publishing sensor data
 const String OutTopic = "/trains/track/turnout/" + String(JMRITurnoutNumber);    // topic for incoming output commands
-const String AnalogTopic = "/trains/track/analog/" + String(JMRISensorNumber);  // topic for reporting supply voltage
 
 const int ServoClosedDefault = 30;            // Turnout closed position in degrees of rotation on the servo
 const int ServoThrownDefault = 120;           // Turnout thrown position, max 180 degrees
@@ -118,7 +101,6 @@ const int ServoThrownDefault = 120;           // Turnout thrown position, max 18
 WiFiClient EspClient;
 PubSubClient Client(EspClient);
 Servo MyServo;
-boolean AnalogSent;
 int EEaddressReady = 0;
 int EEaddressClosed = EEaddressReady + sizeof(int);
 int EEaddressThrown = EEaddressClosed + sizeof(int);
@@ -126,8 +108,6 @@ int EEaddressLastState = EEaddressThrown + sizeof(int);
 int ServoClosed;
 int ServoThrown;
 int ProgramMode = PROGOFF;
-long Avg_analog = 1000000;
-
 
 
 void publish(String topic, String payload) {
@@ -436,8 +416,6 @@ void setup() {
   closeTurnout();              // follow up with this to set the outputs properly
   Serial.println("Attaching servo done.");
 
-  AnalogSent = true;  // make them wait for one period before getting first reading
-  
   setup_wifi();
   Client.setServer(MQTTIP, 1883);
   Client.setCallback(callback);
@@ -452,19 +430,7 @@ void setup() {
 
 
 
-void sendAnalog(float avg) {
-  if (avg == 0)
-    avg = analogRead(A0);
-    
-  // This requires a 182k resistor between 5V and A0
-  publish(AnalogTopic, String((avg / 1000) / AnalogCalibrate));
-}
-
-
-
 void loop() {
-  long analogTime;
-  
   // confirm still connected to mqtt server
   
   if (!Client.connected())
@@ -480,20 +446,5 @@ void loop() {
   if (ProgramMode)
     checkProgBtns();
 
-
-  // calculate a moving average of the analog reading
-  Avg_analog = ((Avg_analog * 99) + (analogRead(A0) * 1000)) / 100;
-  
-  // send it every 60 seconds, with an offset to avoid pile-ups
-  analogTime = ((millis() + ((JMRISensorNumber % 60) * 1000)) % 60000); 
-
-  if ((!AnalogSent) && (analogTime < 1000)) { 
-    sendAnalog(Avg_analog);
-    AnalogSent = true; 
-  }
-  
-  if (analogTime > 1000) // wait just a bit to make sure we don't retrigger
-    AnalogSent = false;
-    
   delay(10);
 }
