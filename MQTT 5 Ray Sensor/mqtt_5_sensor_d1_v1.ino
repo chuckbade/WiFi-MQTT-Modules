@@ -1,6 +1,6 @@
 /*
   MQTT 5 Sensor Node
-  Chuck Bade 3/20/21
+  Chuck Bade 3/24/21
 */
 
 #include <ESP8266WiFi.h>
@@ -16,22 +16,10 @@
 #include <SSIDPASSWD.h>
 #endif
 
-//const char* MQTTServer = "192.168.1.13";
-
 // change the following three lines for your sensor/output configuration
-const int JMRISensorNumber = 900;  // The first sensor, a JMRI number, i.e. MS400, must be unique
-const int NumberOfSensors = 5;     // The number of inputs
-
-/*
- The analog reading reads whatever is on the 5V pin, if there is a 182k resistor 
- between 5V and A0.  The AnalogCalibrate provides a way of adjusting the reading
- for variance in resistor and ADC values.  Use a 1% resistor if possible.
- The purpose for monitoring the 5V level is to determine if there is excessive voltage
- drop between the power supply and the devices.  If the 5V drops below 4.75V, there
- could be various malfunctions and data loss.  Adjust when programming the module.
- To adjust: New AnalogCalibrate = (reported/actual) * AnalogCalibrate
-*/
-const float AnalogCalibrate = 195.5;
+const int JMRISensorNumber = 546;  // The first sensor, a JMRI number, i.e. MS400, must be unique
+const int NumberOfSensors = 4;     // The number of inputs
+const int Inverted = 1;  // set to 0 for no inversion, set to 1 to invert ACTIVE/INACTIVE output messages 
 
 
 /*
@@ -55,10 +43,6 @@ const float AnalogCalibrate = 195.5;
   the state for the corresponding sensor.  It publishes the message "ACTIVE" or "INACTIVE" using the 
   topic "/trains/track/sensor/###", where ### is the sensor number in JMRI. 
   
-  The sketch will periodically publish "battery" voltage, which measures the voltage on the 5V 
-  pin.  The JMRISensorNumber value is also the ID used in the analog output supply voltage 
-  messages, so it should be set to a number unique to that node.
-
   The D1 Mini has 8 pins that will work for I/O but some pins better for certain purposes
   than others. 
   D0/GPIO16  Can be used as an input if it will not be low on power up.  This can cause 
@@ -79,9 +63,6 @@ const float AnalogCalibrate = 195.5;
 // topics for publishing sensor data will be built in setup()
 const String SensorTopic = "/trains/track/sensor/";  
 
-// topic for reporting supply voltage
-const String AnalogTopic = "/trains/track/analog/" + String(JMRISensorNumber);  
-
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -93,9 +74,7 @@ class Gpio {
 };
 
 Gpio Channel[8];
-boolean AnalogSent = true;
 #define DEBOUNCE_COUNT 20
-long Avg_analog = 1000000;
 
 
 
@@ -125,10 +104,19 @@ void setup_wifi() {
 
 
 void sendOneBit(int bit) {
-  if (Channel[bit].state)
-    publish(Channel[bit].topic, "INACTIVE");
-  else
-    publish(Channel[bit].topic, "ACTIVE");
+  Serial.println("bit=" + String(bit) + " state=" + Channel[bit].state);
+  
+  if (Inverted) {
+    if (Channel[bit].state) 
+      publish(Channel[bit].topic, "INACTIVE");
+    else
+      publish(Channel[bit].topic, "ACTIVE");
+  } else {  
+    if (Channel[bit].state) 
+      publish(Channel[bit].topic, "ACTIVE");
+    else
+      publish(Channel[bit].topic, "INACTIVE");
+  }
 }
 
 
@@ -182,7 +170,6 @@ void setup() {
     Channel[i].topic = SensorTopic + String(JMRISensorNumber + i); 
   }
 
-  Serial.println("Analog voltage=" + String(analogRead(A0) / AnalogCalibrate));
   setup_wifi();
   client.setServer(MQTTIP, 1883);
   client.setCallback(callback);
@@ -190,19 +177,7 @@ void setup() {
 
 
 
-void sendAnalog(float avg) {
-  if (avg == 0)
-    avg = analogRead(A0);
-    
-  // This requires a 182k resistor between 5V and A0
-  publish(AnalogTopic, String((avg / 1000) / AnalogCalibrate));
-}
-
-
-
-void loop() {
-  long analogTime;
-  
+void loop() { 
   // confirm still connected to mqtt server
   if (!client.connected())
     reconnect();
@@ -234,20 +209,5 @@ void loop() {
     }
   }
 
-
-  // calculate a moving average of the analog reading
-  Avg_analog = ((Avg_analog * 99) + (analogRead(A0) * 1000)) / 100;
-  
-  // send it every 60 seconds, with an offset to avoid pile-ups
-  analogTime = ((millis() + ((JMRISensorNumber % 60) * 1000)) % 60000); 
-  
-  if ((!AnalogSent) && (analogTime < 1000)) { 
-    sendAnalog(Avg_analog);
-    AnalogSent = true; 
-  }
-  
-  if (analogTime > 1000)
-    AnalogSent = false;
-    
   delay(10);
 }
