@@ -97,17 +97,14 @@ void publish(String topic, String payload) {
 void subscribe(String topic) {
   // publish an empty output message to clear any retained messages
   client.publish(topic.c_str(), "", true);   
-  Serial.println("Clearing previously retained messages for topic: " + topic);
 
   client.subscribe(topic.c_str());
-  Serial.println("Subscribed to : " + topic);
 }
 
 
 
 void setupWifi() {
   delay(10);
-  Serial.println();
 
   // We start by connecting to a WiFi network
   Serial.print("Connecting to " + String(MYSSID));
@@ -188,7 +185,7 @@ void moveToRay(int rayNum) {
 
 long moveHome() {
   int i;
-  Serial.print("moveHome() Start...");
+  Serial.print("Start...");
   Stpr.setMaxSpeed(MaxHomingSpeed);    // maximum speed after full acceleration
 
   if (digitalRead(HOME) == SensorAtHome) {  // if the home flag is already set
@@ -385,6 +382,9 @@ void reconnect() {
     // Attempt to connect
     if (client.connect(String(JMRISensorNumber).c_str())) {
       Serial.println("connected");
+      Serial.println("Clearing previously retained messages and subscribing");
+      Serial.println("to messages for turnout numbers " + String(JMRITurnoutNumber) + " to " 
+        + String(JMRITurnoutNumber + LastRay));
         for (int i = 0; i <= LastRay; i++) 
           subscribe(TurnoutTopic[i]);
     } else {
@@ -413,11 +413,7 @@ void getRayPositions() {
     }
 
     RayPosition[LastRay] = position;
-    
-    Serial.println("eeAddress=" + String(eeAddress) + " LastRay=" + String(LastRay) 
-      + " value=" + String(RayPosition[LastRay]));
   }
-  Serial.println("LastRay=" + String(LastRay));
 }
 
 
@@ -451,6 +447,7 @@ void testRotationCount() {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println();
   Serial.println("Starting setup");
   EEPROM.begin(256);
   ESP.wdtDisable();
@@ -465,6 +462,9 @@ void setup() {
 
   if (!digitalRead(PUSHBTN2))
     testRotationCount();
+
+  Stpr.setAcceleration(AccelerationFactor);  // acceleration factor, library default is 50
+  moveHome();  // try this to fix startup bug
 
   setupWifi();
   client.setServer(MQTTIP, 1883);
@@ -491,16 +491,9 @@ void setup() {
       break;
 
     RayPosition[++LastRay] = position;
-    
-    Serial.println("eeAddress=" + String(eeAddress) + " LastRay=" + String(LastRay) 
-      + " value=" + String(RayPosition[LastRay]));
-   
     eeAddress += sizeof(long);
   }
 
-  Stpr.setAcceleration(AccelerationFactor);  // acceleration factor, library default is 50
-
-  moveHome();
   Stpr.setMaxSpeed(MaximumSpeed);    // maximum speed
   CurrentRay = 0;
   ProgRayMode = false;
