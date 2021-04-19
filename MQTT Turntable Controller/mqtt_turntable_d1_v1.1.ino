@@ -460,7 +460,9 @@ void setup() {
   pinMode(PUSHBTN2, INPUT_PULLUP);
   pinMode(HOME, INPUT_PULLUP);
 
-  if (!digitalRead(PUSHBTN2))
+  delay(50); // wait for the capacitor on the button to charge before starting
+  
+  if (!digitalRead(PUSHBTN2)) // if push button 2 is held while starting up, run the rotation test
     testRotationCount();
 
   Stpr.setAcceleration(AccelerationFactor);  // acceleration factor, library default is 50
