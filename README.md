@@ -7,15 +7,18 @@ Note this uses both the DCC++ connection from JMRI, and the MQTT connection.  Ea
 
 To build a system, you will need some knowledge of electronics and software, but only at a hobbyist's level.  Before taking this on, I would recommend buying a D1 Mini and programming it to flash the on-board LED, then hook up an external LED and make it flash.  If you get that working, you've done the hard part, getting Arduino IDE set up.
 
-I currently have 5 circuit boards designed for use with DCCPPD.  
+I currently have 8 circuit boards designed for use with JMRI/MQTT.  
 - BC Shield - Used for feed the DCC signal to block controllers using standard CAT5 cables.
 - Block Controller - Tested and in use on my layout.
 - Turnout Controller - Tested and in use on my layout.
 - Turntable Controller - Nearly ready, still has a bug.
-- D1 Mini breakout - Only for experments.
-
+- 5 Ray Sensor - For 5 rays of a staging yard or turntable.
+- Bridge Detector - For connecting two optical sensors under a turntable bridge.
+- MQTT Monitor - A useful LCD-based monitoring tool that can send messages.
+- Robocut - For running a servo inside a boxcar to uncouple other cars from it.
+- 
 I may sell blank boards or just provide the files to have your own made.  I haven't decided which way to go with that.
 
 I am a retired software engineer, and I have been involved in electronics since my dad bought some CK722 transistors and a book from Berstein Applebee, from which we built various circuits. Now I design my own hardware and write the software to run it.  I was trained in electronics (PMEL) in the Marine Corps and since I never had a formal education in electrical engineering, my designs are based on what I've learned along the way and are a product of much trial and some error. I have a Bachelor's Degree in Computer Science.
 
-I had tried to use S88N to monitor sensors around the layout, but found it to be prone to electrical noise, so S88 is gone, but I've repurposed the CAT5 cables to route the DCC signal and power to the block controllers.  
+I had tried to use S88N to monitor sensors around the layout, but found it to be prone to electrical noise, so S88 is gone, but I've repurposed the CAT5 cables to route the DCC signal and power to the block controllers.  There's too much voltage drop to maintain an adequate level from the five volt supply, so some extra voltage taps are required at the far ends of the the layout.  My train room is 15' by 15' with track on all four walls.
