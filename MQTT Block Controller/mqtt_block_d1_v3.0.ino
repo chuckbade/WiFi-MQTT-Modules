@@ -7,15 +7,15 @@
 // Place the file in C:\Users\<name>\Documents\Arduino\libraries\Personal\
 //#define MYSSID "YourNetwork"
 //#define PASSWD "YourPassword"
-//#define MQTTIP "192.168.1.13"
+//#define MQTTIP "10.0.0.13"
 
 #ifndef MYSSID
 #include <SSIDPASSWD.h>
 #endif
 
 // change the following three lines for your sensor/output configuration
-const int JMRISensorNumber = 530;  // This is a JMRI number, i.e. MS400, must be unique
-const int JMRIGreenNumber  = 890;    // These are JMRI numbers, i.e. MT55
+const int JMRISensorNumber = 536;  // This is a JMRI number, i.e. MS400
+const int JMRIGreenNumber  = 904;    // These are JMRI numbers, i.e. MT55
 const int JMRIYellowNumber = JMRIGreenNumber + 1;
 const int JMRIRedNumber    = JMRIGreenNumber + 2;
 const int JMRIAuxNumber    = JMRIGreenNumber + 3;
@@ -31,9 +31,10 @@ const int JMRIAuxNumber    = JMRIGreenNumber + 3;
   It connects to the provided WiFi access point using Ssid and Pswd and gets its IP address 
   by DHCP.
 
-  It connects to an MQTT server somewhere on the network, using JMRISensorNumber for an ID.  
-  Each node connecting to the MQTT broker needs a unique ID, therefore JMRISensorNumber must be
-  unique.  If the connection to the MQTT broker is lost, the sketch will attempt to reconnect
+  It connects to an MQTT server somewhere on the network, using the OTA hostname and 
+  JMRISensorNumber for an ID.  Each node connecting to the MQTT broker needs a unique ID, and 
+  using the OTA hostname achieves this.  The sensor number is included for ease of trouble-
+  shooting.  If the connection to the MQTT broker is lost, the sketch will attempt to reconnect 
   using a blocking reconnect function.   
   
   The sensor (input) and signal head output numbers are set by the user.  The sensor (input) is
@@ -60,7 +61,9 @@ const int JMRIAuxNumber    = JMRIGreenNumber + 3;
 
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
-
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
 
 
 
@@ -115,6 +118,7 @@ void setup_wifi() {
 
   // We start by connecting to a WiFi network
   Serial.print("Connecting to " + String(MYSSID));
+  WiFi.mode(WIFI_STA);
   WiFi.begin(MYSSID, PASSWD);
   
   while (WiFi.status() != WL_CONNECTED) {
@@ -123,6 +127,29 @@ void setup_wifi() {
   }
   
   Serial.println(" connected. IP address: " + WiFi.localIP().toString());
+
+    ArduinoOTA.onStart([]() {
+    Serial.println("Start");
+  });
+
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+  ArduinoOTA.begin();
+  Serial.println("OTA Hostname: " + ArduinoOTA.getHostname());
 }
 
 
@@ -207,7 +234,8 @@ void reconnect() {
     Serial.print("Attempting MQTT connection...");
 
     // Attempt to connect
-    if (client.connect(String(JMRISensorNumber).c_str())) {
+    if (client.connect((ArduinoOTA.getHostname() + ":" 
+      + String(JMRISensorNumber)).c_str())) {
       Serial.println("connected");
       subscribe(GreenTopic);
       subscribe(YellowTopic);
@@ -248,6 +276,8 @@ void setup() {
 
 
 void loop() {
+  ArduinoOTA.handle();
+
   // confirm still connected to mqtt server
   if (client.connected() == false)
     reconnect();

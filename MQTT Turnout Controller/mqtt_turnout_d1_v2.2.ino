@@ -76,6 +76,10 @@ const int PulseTime = 100;         // Time of pulse sent to snap-type turnouts
 #include <PubSubClient.h>
 #include <Servo.h>
 #include <EEPROM.h>
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+
 
 // pin numbers used
 #define UPBTN 16   // D0 Up button for programming servo positions.
@@ -123,6 +127,7 @@ void setup_wifi() {
 
   // We start by connecting to a WiFi network
   Serial.print("Connecting to " + String(MYSSID));
+  WiFi.mode(WIFI_STA);
   WiFi.begin(MYSSID, PASSWD);
   
   while (WiFi.status() != WL_CONNECTED) {
@@ -131,6 +136,29 @@ void setup_wifi() {
   }
 
   Serial.println("connected. IP address: " + WiFi.localIP().toString());
+
+    ArduinoOTA.onStart([]() {
+    Serial.println("Start");
+  });
+
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+  ArduinoOTA.begin();
+  Serial.println("OTA Hostname: " + ArduinoOTA.getHostname());
 }
 
 
@@ -359,7 +387,8 @@ void reconnect() {
     Serial.print("Attempting MQTT connection...");
 
     // Attempt to connect
-    if (Client.connect(String(JMRISensorNumber).c_str())) {
+    if (Client.connect((ArduinoOTA.getHostname() + ":" 
+      + String(JMRISensorNumber)).c_str())) {
       Serial.println("connected");
       // publish an empty output message to clear any retained messages
       publish(OutTopic.c_str(), "");   
@@ -431,6 +460,8 @@ void setup() {
 
 
 void loop() {
+  ArduinoOTA.handle();
+
   // confirm still connected to mqtt server
   
   if (!Client.connected())

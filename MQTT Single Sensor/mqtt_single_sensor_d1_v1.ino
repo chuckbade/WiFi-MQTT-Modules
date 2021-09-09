@@ -5,6 +5,9 @@
 
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
 
 // Update and uncomment these with values suitable for your network or use an include file.
 // Place the file in C:\Users\<name>\Documents\Arduino\libraries\Personal\
@@ -88,6 +91,7 @@ void setup_wifi() {
 
   // We start by connecting to a WiFi network
   Serial.print("Connecting to " + String(MYSSID));
+  WiFi.mode(WIFI_STA);
   WiFi.begin(MYSSID, PASSWD);
   
   while (WiFi.status() != WL_CONNECTED) {
@@ -97,6 +101,29 @@ void setup_wifi() {
 
  //print the local IP address
   Serial.println(" connected. IP address: " + WiFi.localIP().toString());
+
+  ArduinoOTA.onStart([]() {
+    Serial.println("Start");
+  });
+
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+  ArduinoOTA.begin();
+  Serial.println("OTA Hostname: " + ArduinoOTA.getHostname());
 }
 
 
@@ -132,7 +159,8 @@ void reconnect() {
     Serial.print("Attempting MQTT connection...");
 
     // Attempt to connect
-    if (client.connect(String(JMRISensorNumber).c_str())) {
+    if (client.connect((ArduinoOTA.getHostname() + ":" 
+      + String(JMRISensorNumber)).c_str())) {
       Serial.println("connected");
     } else {
       Serial.print("failed, rc=" + String(client.state()) + " wifi=" + WiFi.status());
@@ -163,6 +191,8 @@ void setup() {
 
 
 void loop() {
+  ArduinoOTA.handle();
+
   // confirm still connected to mqtt server
   if (!client.connected())
     reconnect();
